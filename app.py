@@ -41,7 +41,7 @@ def generate_audit_template():
 
 data_mode = st.sidebar.radio(
     "เลือกแหล่งข้อมูล:",
-    ["ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)", "อัปโหลดไฟล์ Excel "]
+    ["อัปโหลดไฟล์ Excel "]
 )
 
 @st.cache_data
