@@ -36,14 +36,6 @@ def generate_audit_template():
         pd.DataFrame(columns=["INV_No", "SO_No", "Billed_Qty", "Billed_Price", "Discount_Pct", "INV_Date", "Paid_Amount", "Status", "Cancelled_Date"]).to_excel(writer, sheet_name="Invoice_Ledger", index=False)
     return buffer.getvalue()
 
-st.sidebar.download_button(
-    label="📥 ดาวน์โหลดไฟล์ Template Excel",
-    data=generate_audit_template(),
-    file_name="Audit_Revenue_Template.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    help="ดาวน์โหลดไฟล์ Excel เปล่าที่มีโครงสร้างหัวตารางครบทั้ง 4 แผ่นงาน"
-)
-
 data_mode = st.sidebar.radio(
     "เลือกแหล่งข้อมูล:",
     ["ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)", "อัปโหลดไฟล์ Excel เดี่ยว (Single Multi-Sheet Excel)"]
@@ -89,15 +81,13 @@ api_key = st.sidebar.text_input(...)
 st.sidebar.markdown("---")
 st.sidebar.header("แหล่งข้อมูล (Data Source)")
 
-# >>> วางโค้ดปุ่มดาวน์โหลด Template ตรงนี้ <<<
-template_bytes = generate_audit_template()
 st.sidebar.download_button(
     label="📥 ดาวน์โหลดไฟล์ Template Excel",
-    data=template_bytes,
+    data=generate_audit_template(),
     file_name="Audit_Revenue_Template.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    help="ดาวน์โหลดไฟล์ Excel เปล่าที่มีโครงสร้างหัวตารางครบทั้ง 4 แผ่นงาน"
 )
-
 
 if data_mode == "ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)":
     df_cust, df_so, df_do, df_inv = generate_mock_datasets()
