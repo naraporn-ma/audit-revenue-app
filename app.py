@@ -40,7 +40,7 @@ data_mode = st.sidebar.radio(
     "เลือกแหล่งข้อมูล:",
     ["ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)", "อัปโหลดไฟล์ Excel "]
 )
-st.sidebar.markdown("---")
+
 
 @st.cache_data
 def generate_mock_datasets():
