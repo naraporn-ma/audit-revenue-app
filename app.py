@@ -41,7 +41,6 @@ data_mode = st.sidebar.radio(
     ["ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)", "อัปโหลดไฟล์ Excel "]
 )
 
-
 @st.cache_data
 def generate_mock_datasets():
     customers = pd.DataFrame([
