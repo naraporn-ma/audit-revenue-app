@@ -80,7 +80,7 @@ def generate_mock_datasets():
     st.sidebar.header("การตั้งค่าระบบและ AI")
 
 st.sidebar.markdown("---")
-st.sidebar.header(2."ตัวอย่าง Template Excel")
+st.sidebar.header("2.ตัวอย่าง Template Excel")
 
 st.sidebar.download_button(
     label="📥 ดาวน์โหลดไฟล์ Template Excel",
