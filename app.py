@@ -69,13 +69,23 @@ else:
         excel_file = pd.ExcelFile(uploaded_excel)
         sheets = excel_file.sheet_names
         
-        # ฟังก์ชันค้นหาแถวที่เป็นหัวตารางจริงอัตโนมัติ
+        def match_sheet(keys):
+            for s in sheets:
+                if any(k.lower() in s.lower() for k in keys):
+                    return sheets.index(s)
+            return 0
+
+        # กำหนดตัวเลือก Sheet ทาง Sidebar
+        s_cust = st.sidebar.selectbox("Sheet ลูกค้า (Customer Master)", sheets, index=match_sheet(["cust", "ลูกค้า"]))
+        s_so = st.sidebar.selectbox("Sheet ใบสั่งขาย (Sales Order / PO)", sheets, index=match_sheet(["so", "sales", "order"]))
+        s_do = st.sidebar.selectbox("Sheet ใบส่งของ (Delivery Order)", sheets, index=match_sheet(["do", "delivery", "ส่ง"]))
+        s_inv = st.sidebar.selectbox("Sheet ใบแจ้งหนี้ (Invoice / AR)", sheets, index=match_sheet(["invoice", "inv", "ลูกหนี้", "ledger"]))
+
+        # ฟังก์ชันค้นหาแถวที่เป็นหัวตารางจริงอัตโนมัติ (ข้ามแถวหัวเรื่องถ้ามี)
         def smart_read_sheet(file, sheet_name, key_cols):
-            # ลองอ่านแบบปกติก่อน
             temp_df = pd.read_excel(file, sheet_name=sheet_name)
             if any(k in temp_df.columns for k in key_cols):
                 return temp_df
-            # ถ้าหัวคอลัมน์อยู่ที่แถวอื่น ให้สแกนหาแถวที่มีชื่อคอลัมน์ตรงกับข้อมูล
             for skip in range(1, 10):
                 temp_df = pd.read_excel(file, sheet_name=sheet_name, skiprows=skip)
                 if any(k in temp_df.columns for k in key_cols):
@@ -87,15 +97,6 @@ else:
             df_so = smart_read_sheet(uploaded_excel, s_so, ["SO_No", "Approved_Price"])
             df_do = smart_read_sheet(uploaded_excel, s_do, ["DO_No", "Delivered_Qty"])
             df_inv = smart_read_sheet(uploaded_excel, s_inv, ["INV_No", "Billed_Qty"])
-        except Exception as e:
-            st.error(f"เกิดข้อผิดพลาดในการโหลดไฟล์ Excel: {str(e)}")
-            st.stop()
-
-        try:
-            df_cust = pd.read_excel(uploaded_excel, sheet_name=s_cust)
-            df_so = pd.read_excel(uploaded_excel, sheet_name=s_so)
-            df_do = pd.read_excel(uploaded_excel, sheet_name=s_do)
-            df_inv = pd.read_excel(uploaded_excel, sheet_name=s_inv)
         except Exception as e:
             st.error(f"เกิดข้อผิดพลาดในการโหลดไฟล์ Excel: {str(e)}")
             st.stop()
