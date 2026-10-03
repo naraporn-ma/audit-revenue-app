@@ -26,7 +26,6 @@ api_key = st.sidebar.text_input("Google Gemini API Key", type="password", help="
 st.sidebar.markdown("---")
 st.sidebar.header("2. แหล่งข้อมูล (Data Source)")
 
-# ฟังก์ชันสร้างไฟล์ Template Excel เปล่า (4 Sheets พร้อมหัวตาราง)
 @st.cache_data
 def generate_audit_template():
     buffer = io.BytesIO()
@@ -37,7 +36,6 @@ def generate_audit_template():
         pd.DataFrame(columns=["INV_No", "SO_No", "Billed_Qty", "Billed_Price", "Discount_Pct", "INV_Date", "Paid_Amount", "Status", "Cancelled_Date"]).to_excel(writer, sheet_name="Invoice_Ledger", index=False)
     return buffer.getvalue()
 
-# ปุ่มดาวน์โหลด Template แสดงเพียงปุ่มเดียว
 st.sidebar.download_button(
     label="📥 ดาวน์โหลดไฟล์ Template Excel",
     data=generate_audit_template(),
@@ -46,7 +44,6 @@ st.sidebar.download_button(
     help="ดาวน์โหลดไฟล์ Excel เปล่าที่มีโครงสร้างหัวตารางครบทั้ง 4 แผ่นงาน"
 )
 
-# ตัวเลือกแหล่งข้อมูล (มีแค่จุดเดียว)
 data_mode = st.sidebar.radio(
     "เลือกแหล่งข้อมูล:",
     ["ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)", "อัปโหลดไฟล์ Excel เดี่ยว (Single Multi-Sheet Excel)"]
