@@ -160,11 +160,17 @@ else:
     sel_range = None
 
 # กรอง Master Data ตามเงื่อนไข
+# --- โค้ดใหม่ที่แก้ไขแล้ว ---
 filtered_df = audit_master.copy()
 if sel_cust != "ทั้งหมด (All)":
     filtered_df = filtered_df[filtered_df["Customer_Name"] == sel_cust]
+
 if sel_range and len(sel_range) == 2:
-    filtered_df = filtered_df[(filtered_df["INV_Date"].dt.date >= sel_range[0]) & (filtered_df["INV_Date"].dt.date <= sel_range[1])]
+    # แยกตรวจสอบ: ถ้ารายการไหนมี INV_Date ให้เช็กช่วงวัน แต่ถ้ารายการไหนไม่มี INV_Date (เช่น Unbilled หรือยังไม่ออกบิล) ให้แสดงไว้ด้วยเพื่อไม่ให้ข้อมูลตกหล่น
+    inv_date_series = filtered_df["INV_Date"].dt.date
+    is_in_range = (inv_date_series >= sel_range[0]) & (inv_date_series <= sel_range[1])
+    is_na_date = filtered_df["INV_Date"].isna()
+    filtered_df = filtered_df[is_in_range | is_na_date]
 
 # ==============================================================================
 # 4. ฟังก์ชันส่งออกตารางเป็น Excel (Export Helper)
