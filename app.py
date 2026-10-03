@@ -432,7 +432,7 @@ with tabs[7]:
             st.dataframe(aging_sum.style.format({"Outstanding_AR": "{:,.2f}", "Loss_Rate_%": "{:.2f}%", "ECL_Allowance": "{:,.2f}"}), use_container_width=True)
             st.metric("ประมาณการค่าเผื่อ ECL รวมสุทธิ", f"{aging_sum['ECL_Allowance'].sum():,.2f} บาท")
     else:
-        st.success("ลูกหนี้รายนี้ไม่มีรายการหนี้ค้างชำระ (Outstanding AR = 0.00 บาท) จึงไม่ต้องตั้งค่าเผื่อผลขาดทุนด้านเครดิต (ECL)"))
+        st.success("ลูกหนี้รายนี้ไม่มีรายการหนี้ค้างชำระ (Outstanding AR = 0.00 บาท) จึงไม่ต้องตั้งค่าเผื่อผลขาดทุนด้านเครดิต (ECL)")
 
 # ----- TAB 9: AR Confirmation -----
 with tabs[8]:
