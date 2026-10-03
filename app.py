@@ -26,6 +26,49 @@ api_key = st.sidebar.text_input("Google Gemini API Key", type="password", help="
 st.sidebar.markdown("---")
 st.sidebar.header("2. แหล่งข้อมูล (Data Source)")
 data_mode = st.sidebar.radio("เลือกแหล่งข้อมูล:", ["ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)", "อัปโหลดไฟล์ Excel เดี่ยว (Single Multi-Sheet Excel)"])
+# -------------------------------------------------------------
+# ฟังก์ชันสร้างไฟล์ Template Excel เปล่า (4 Sheets พร้อมหัวตาราง)
+# -------------------------------------------------------------
+@st.cache_data
+def generate_audit_template():
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        # 1. Customer Master
+        df_tmpl_cust = pd.DataFrame(columns=[
+            "Customer_ID", "Customer_Name", "Tax_ID", "Address", "Credit_Limit", "Standard_Term"
+        ])
+        df_tmpl_cust.to_excel(writer, sheet_name="Customer_Master", index=False)
+        
+        # 2. Sales Order
+        df_tmpl_so = pd.DataFrame(columns=[
+            "SO_No", "Customer_ID", "Item", "SO_Qty", "Approved_Price", "Approved_Term", "Max_Discount_Pct"
+        ])
+        df_tmpl_so.to_excel(writer, sheet_name="Sales_Order", index=False)
+        
+        # 3. Delivery Order
+        df_tmpl_do = pd.DataFrame(columns=[
+            "DO_No", "SO_No", "Delivered_Qty", "Delivery_Date"
+        ])
+        df_tmpl_do.to_excel(writer, sheet_name="Delivery_Order", index=False)
+        
+        # 4. Invoice Ledger
+        df_tmpl_inv = pd.DataFrame(columns=[
+            "INV_No", "SO_No", "Billed_Qty", "Billed_Price", "Discount_Pct", "INV_Date", "Paid_Amount", "Status", "Cancelled_Date"
+        ])
+        df_tmpl_inv.to_excel(writer, sheet_name="Invoice_Ledger", index=False)
+        
+    return buffer.getvalue()
+
+# เพิ่มปุ่มดาวน์โหลด Template ที่ Sidebar
+template_bytes = generate_audit_template()
+st.sidebar.download_button(
+    label="📥 ดาวน์โหลดไฟล์ Template Excel",
+    data=template_bytes,
+    file_name="Audit_Revenue_Template.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    help="ดาวน์โหลดไฟล์ Excel เปล่าที่มีโครงสร้างหัวตารางครบทั้ง 4 แผ่นงานสำหรับนำไปกรอกข้อมูลจริง"
+)
+st.sidebar.markdown("---")
 
 @st.cache_data
 def generate_mock_datasets():
@@ -60,6 +103,22 @@ def generate_mock_datasets():
         {"INV_No": "INV-106", "SO_No": "SO-106", "Billed_Qty": 400, "Billed_Price": 500.0, "Discount_Pct": 0.0, "INV_Date": "2026-06-30", "Paid_Amount": 0.0, "Status": "Cancelled", "Cancelled_Date": "2026-07-03"},
     ])
     return customers, so, do, inv
+    st.sidebar.header("การตั้งค่าระบบและ AI")
+api_key = st.sidebar.text_input(...)
+
+st.sidebar.markdown("---")
+st.sidebar.header("แหล่งข้อมูล (Data Source)")
+
+# >>> วางโค้ดปุ่มดาวน์โหลด Template ตรงนี้ <<<
+template_bytes = generate_audit_template()
+st.sidebar.download_button(
+    label="📥 ดาวน์โหลดไฟล์ Template Excel",
+    data=template_bytes,
+    file_name="Audit_Revenue_Template.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
+data_mode = st.sidebar.radio("เลือกแหล่งข้อมูล:", ...)
 
 if data_mode == "ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)":
     df_cust, df_so, df_do, df_inv = generate_mock_datasets()
@@ -103,7 +162,6 @@ else:
     else:
         st.info("กรุณาอัปโหลดไฟล์ Excel ที่มีครบทุก Sheet เพื่อเริ่มต้นการวิเคราะห์")
         st.stop()
-
 # ==============================================================================
 # 2. เครื่องมือประมวลผลข้อมูล (Core Audit Engine)
 # ==============================================================================
@@ -334,8 +392,7 @@ with tabs[6]:
     else:
         st.info("จำนวนข้อมูลน้อยเกินไปสำหรับการรันโมเดล Isolation Forest")
 
-# ----- TAB 8: Aging & TFRS 9 ECL -----
-# ----- TAB 8: Aging & TFRS 9 ECL (แก้ไขแล้ว) -----
+    # ----- TAB 8: Aging & TFRS 9 ECL (แก้ไขแล้ว) -----
 with tabs[7]:
     st.subheader("วิเคราะห์อายุหนี้และคำนวณค่าเผื่อผลขาดทุนด้านเครดิต (TFRS 9 Provision Matrix)")
     as_of = pd.to_datetime(date.today())
@@ -375,7 +432,7 @@ with tabs[7]:
             st.dataframe(aging_sum.style.format({"Outstanding_AR": "{:,.2f}", "Loss_Rate_%": "{:.2f}%", "ECL_Allowance": "{:,.2f}"}), use_container_width=True)
             st.metric("ประมาณการค่าเผื่อ ECL รวมสุทธิ", f"{aging_sum['ECL_Allowance'].sum():,.2f} บาท")
     else:
-        st.success("ลูกหนี้รายนี้ไม่มีรายการหนี้ค้างชำระ (Outstanding AR = 0.00 บาท) จึงไม่ต้องตั้งค่าเผื่อผลขาดทุนด้านเครดิต (ECL)")
+        st.success("ลูกหนี้รายนี้ไม่มีรายการหนี้ค้างชำระ (Outstanding AR = 0.00 บาท) จึงไม่ต้องตั้งค่าเผื่อผลขาดทุนด้านเครดิต (ECL)"))
 
 # ----- TAB 9: AR Confirmation -----
 with tabs[8]:
