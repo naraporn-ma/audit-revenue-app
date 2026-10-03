@@ -309,6 +309,7 @@ with tabs[6]:
         st.info("จำนวนข้อมูลน้อยเกินไปสำหรับการรันโมเดล Isolation Forest")
 
 # ----- TAB 8: Aging & TFRS 9 ECL -----
+# ----- TAB 8: Aging & TFRS 9 ECL (แก้ไขแล้ว) -----
 with tabs[7]:
     st.subheader("วิเคราะห์อายุหนี้และคำนวณค่าเผื่อผลขาดทุนด้านเครดิต (TFRS 9 Provision Matrix)")
     as_of = pd.to_datetime(date.today())
@@ -323,7 +324,6 @@ with tabs[7]:
         
     filtered_df["Aging_Group"] = filtered_df["Overdue_Days"].apply(bucket_ag)
     ar_open = filtered_df[filtered_df["Outstanding_AR"] > 0]
-    aging_sum = ar_open.groupby("Aging_Group")["Outstanding_AR"].sum().reset_index()
     
     loss_rates = {
         "1. ยังไม่ถึงกำหนด": 0.005,
@@ -332,17 +332,24 @@ with tabs[7]:
         "4. เกินกำหนด 61-90 วัน": 0.15,
         "5. เกินกำหนด > 90 วัน (NPL)": 0.50
     }
-    
-    aging_sum["Loss_Rate_%"] = aging_sum["Aging_Group"].map(lambda x: loss_rates.get(x, 0) * 100)
-    aging_sum["ECL_Allowance"] = aging_sum["Aging_Group"].map(lambda x: loss_rates.get(x, 0)) * aging_sum["Outstanding_AR"]
-    
-    cg, ct = st.columns([1, 1])
-    with cg:
-        fig_ar = px.bar(aging_sum, x="Aging_Group", y="Outstanding_AR", title="ยอดลูกหนี้ตามชั้นอายุ", color="Aging_Group")
-        st.plotly_chart(fig_ar, use_container_width=True)
-    with ct:
-        st.dataframe(aging_sum.style.format({"Outstanding_AR": "{:,.2f}", "Loss_Rate_%": "{:.2f}%", "ECL_Allowance": "{:,.2f}"}), use_container_width=True)
-        st.metric("ประมาณการค่าเผื่อ ECL รวมสุทธิ", f"{aging_sum['ECL_Allowance'].sum():,.2f} บาท")
+
+    if not ar_open.empty:
+        aging_sum = ar_open.groupby("Aging_Group", as_index=False)["Outstanding_AR"].sum()
+        aging_sum["Outstanding_AR"] = pd.to_numeric(aging_sum["Outstanding_AR"], errors="coerce").fillna(0.0)
+        
+        rates_series = aging_sum["Aging_Group"].map(loss_rates).fillna(0.0)
+        aging_sum["Loss_Rate_%"] = rates_series * 100
+        aging_sum["ECL_Allowance"] = aging_sum["Outstanding_AR"] * rates_series
+        
+        cg, ct = st.columns([1, 1])
+        with cg:
+            fig_ar = px.bar(aging_sum, x="Aging_Group", y="Outstanding_AR", title="ยอดลูกหนี้ตามชั้นอายุ", color="Aging_Group")
+            st.plotly_chart(fig_ar, use_container_width=True)
+        with ct:
+            st.dataframe(aging_sum.style.format({"Outstanding_AR": "{:,.2f}", "Loss_Rate_%": "{:.2f}%", "ECL_Allowance": "{:,.2f}"}), use_container_width=True)
+            st.metric("ประมาณการค่าเผื่อ ECL รวมสุทธิ", f"{aging_sum['ECL_Allowance'].sum():,.2f} บาท")
+    else:
+        st.success("ลูกหนี้รายนี้ไม่มีรายการหนี้ค้างชำระ (Outstanding AR = 0.00 บาท) จึงไม่ต้องตั้งค่าเผื่อผลขาดทุนด้านเครดิต (ECL)")
 
 # ----- TAB 9: AR Confirmation -----
 with tabs[8]:
