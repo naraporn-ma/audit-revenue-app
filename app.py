@@ -80,7 +80,7 @@ def generate_mock_datasets():
     st.sidebar.header("การตั้งค่าระบบและ AI")
 
 st.sidebar.markdown("---")
-st.sidebar.header("ตัวอย่าง Template Excel")
+st.sidebar.header(2."ตัวอย่าง Template Excel")
 
 st.sidebar.download_button(
     label="📥 ดาวน์โหลดไฟล์ Template Excel",
@@ -192,7 +192,7 @@ audit_master["Credit_Finding"] = audit_master.apply(eval_credit, axis=1)
 audit_master["Leakage_Finding"] = audit_master.apply(eval_leakage, axis=1)
 
 # ==============================================================================
-# 2. ตัวกรองข้อมูลแบบ Interactive (Sidebar Filter)
+# 3. ตัวกรองข้อมูลแบบ Interactive (Sidebar Filter)
 # ==============================================================================
 st.sidebar.markdown("---")
 st.sidebar.header("3. กรองข้อมูล (Interactive Filters)")
