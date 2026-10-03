@@ -48,6 +48,7 @@ data_mode = st.sidebar.radio(
     "เลือกแหล่งข้อมูล:",
     ["ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)", "อัปโหลดไฟล์ Excel เดี่ยว (Single Multi-Sheet Excel)"]
 )
+st.sidebar.markdown("---")
 
 @st.cache_data
 def generate_mock_datasets():
@@ -97,7 +98,6 @@ st.sidebar.download_button(
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
-data_mode = st.sidebar.radio("เลือกแหล่งข้อมูล:", ...)
 
 if data_mode == "ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)":
     df_cust, df_so, df_do, df_inv = generate_mock_datasets()
