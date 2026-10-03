@@ -27,45 +27,29 @@ st.sidebar.markdown("---")
 st.sidebar.header("2. แหล่งข้อมูล (Data Source)")
 
 # ฟังก์ชันสร้างไฟล์ Template Excel เปล่า (4 Sheets พร้อมหัวตาราง)
-
 @st.cache_data
 def generate_audit_template():
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        # 1. Customer Master
-        df_tmpl_cust = pd.DataFrame(columns=[
-            "Customer_ID", "Customer_Name", "Tax_ID", "Address", "Credit_Limit", "Standard_Term"
-        ])
-        df_tmpl_cust.to_excel(writer, sheet_name="Customer_Master", index=False)
-        
-        # 2. Sales Order
-        df_tmpl_so = pd.DataFrame(columns=[
-            "SO_No", "Customer_ID", "Item", "SO_Qty", "Approved_Price", "Approved_Term", "Max_Discount_Pct"
-        ])
-        df_tmpl_so.to_excel(writer, sheet_name="Sales_Order", index=False)
-        
-        # 3. Delivery Order
-        df_tmpl_do = pd.DataFrame(columns=[
-            "DO_No", "SO_No", "Delivered_Qty", "Delivery_Date"
-        ])
-        df_tmpl_do.to_excel(writer, sheet_name="Delivery_Order", index=False)
-        
-        # 4. Invoice Ledger
-        df_tmpl_inv = pd.DataFrame(columns=[
-            "INV_No", "SO_No", "Billed_Qty", "Billed_Price", "Discount_Pct", "INV_Date", "Paid_Amount", "Status", "Cancelled_Date"
-        ])
-        df_tmpl_inv.to_excel(writer, sheet_name="Invoice_Ledger", index=False)
-        
+        pd.DataFrame(columns=["Customer_ID", "Customer_Name", "Tax_ID", "Address", "Credit_Limit", "Standard_Term"]).to_excel(writer, sheet_name="Customer_Master", index=False)
+        pd.DataFrame(columns=["SO_No", "Customer_ID", "Item", "SO_Qty", "Approved_Price", "Approved_Term", "Max_Discount_Pct"]).to_excel(writer, sheet_name="Sales_Order", index=False)
+        pd.DataFrame(columns=["DO_No", "SO_No", "Delivered_Qty", "Delivery_Date"]).to_excel(writer, sheet_name="Delivery_Order", index=False)
+        pd.DataFrame(columns=["INV_No", "SO_No", "Billed_Qty", "Billed_Price", "Discount_Pct", "INV_Date", "Paid_Amount", "Status", "Cancelled_Date"]).to_excel(writer, sheet_name="Invoice_Ledger", index=False)
     return buffer.getvalue()
 
-# เพิ่มปุ่มดาวน์โหลด Template ที่ Sidebar
-template_bytes = generate_audit_template()
+# ปุ่มดาวน์โหลด Template แสดงเพียงปุ่มเดียว
 st.sidebar.download_button(
     label="📥 ดาวน์โหลดไฟล์ Template Excel",
-    data=template_bytes,
+    data=generate_audit_template(),
     file_name="Audit_Revenue_Template.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    help="ดาวน์โหลดไฟล์ Excel เปล่าที่มีโครงสร้างหัวตารางครบทั้ง 4 แผ่นงานสำหรับนำไปกรอกข้อมูลจริง"
+    help="ดาวน์โหลดไฟล์ Excel เปล่าที่มีโครงสร้างหัวตารางครบทั้ง 4 แผ่นงาน"
+)
+
+# ตัวเลือกแหล่งข้อมูล (มีแค่จุดเดียว)
+data_mode = st.sidebar.radio(
+    "เลือกแหล่งข้อมูล:",
+    ["ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)", "อัปโหลดไฟล์ Excel เดี่ยว (Single Multi-Sheet Excel)"]
 )
 st.sidebar.markdown("---")
 
