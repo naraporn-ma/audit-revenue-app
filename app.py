@@ -27,7 +27,7 @@ else:
     api_key = st.sidebar.text_input("Google Gemini API Key", type="password")
 
 st.sidebar.markdown("---")
-st.sidebar.header("2. แหล่งข้อมูล (Data Source)")
+st.sidebar.header("1. แหล่งข้อมูล (Data Source)")
 
 @st.cache_data
 def generate_audit_template():
@@ -192,7 +192,7 @@ audit_master["Credit_Finding"] = audit_master.apply(eval_credit, axis=1)
 audit_master["Leakage_Finding"] = audit_master.apply(eval_leakage, axis=1)
 
 # ==============================================================================
-# 3. ตัวกรองข้อมูลแบบ Interactive (Sidebar Filter)
+# 2. ตัวกรองข้อมูลแบบ Interactive (Sidebar Filter)
 # ==============================================================================
 st.sidebar.markdown("---")
 st.sidebar.header("3. กรองข้อมูล (Interactive Filters)")
