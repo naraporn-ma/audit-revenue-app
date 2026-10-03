@@ -25,10 +25,9 @@ api_key = st.sidebar.text_input("Google Gemini API Key", type="password", help="
 
 st.sidebar.markdown("---")
 st.sidebar.header("2. แหล่งข้อมูล (Data Source)")
-data_mode = st.sidebar.radio("เลือกแหล่งข้อมูล:", ["ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)", "อัปโหลดไฟล์ Excel เดี่ยว (Single Multi-Sheet Excel)"])
-# -------------------------------------------------------------
+
 # ฟังก์ชันสร้างไฟล์ Template Excel เปล่า (4 Sheets พร้อมหัวตาราง)
-# -------------------------------------------------------------
+
 @st.cache_data
 def generate_audit_template():
     buffer = io.BytesIO()
