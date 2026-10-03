@@ -24,7 +24,7 @@ st.sidebar.header("1. การตั้งค่าระบบและ AI")
 api_key = st.sidebar.text_input("Google Gemini API Key", type="password", help="รับได้ฟรีจาก Google AI Studio")
 
 st.sidebar.markdown("---")
-st.sidebar.header("2. แหล่งข้อมูล (Data Source)")
+st.sidebar.header("2. ตัวอย่าง Template Excel")
 
 @st.cache_data
 def generate_audit_template():
