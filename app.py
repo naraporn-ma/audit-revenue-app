@@ -20,7 +20,6 @@ st.caption("Automated 3-Way Matching, Fraud Detection, Benford's Law, Machine Le
 # ==============================================================================
 # 1. แถบควบคุมด้านข้าง (Sidebar)
 # ==============================================================================
-st.sidebar.header("1. การตั้งค่าระบบและ AI")
 # ตรวจสอบว่ามีรหัสใน Secrets หลังบ้านหรือไม่ ถ้าไม่มีค่อยให้ผู้ใช้กรอกเอง
 if "GEMINI_API_KEY" in st.secrets:
     api_key = st.secrets["GEMINI_API_KEY"]
