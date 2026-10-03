@@ -107,9 +107,16 @@ else:
 # ==============================================================================
 # 2. เครื่องมือประมวลผลข้อมูล (Core Audit Engine)
 # ==============================================================================
-m1 = pd.merge(df_so, df_cust, on="Customer_ID", how="left")
-m2 = pd.merge(m1, df_do, on="SO_No", how="outer")
-audit_master = pd.merge(m2, df_inv, on="SO_No", how="outer")
+# ลบคอลัมน์ Audit_Note จากตารางย่อยเพื่อป้องกันชื่อคอลัมน์ชนกันตอน merge
+df_cust_clean = df_cust.drop(columns=["Audit_Note"], errors="ignore")
+df_so_clean = df_so.drop(columns=["Audit_Note"], errors="ignore")
+df_do_clean = df_do.drop(columns=["Audit_Note"], errors="ignore")
+df_inv_clean = df_inv.drop(columns=["Audit_Note"], errors="ignore")
+
+# รวมตารางด้วยคีย์หลัก
+m1 = pd.merge(df_so_clean, df_cust_clean, on="Customer_ID", how="left")
+m2 = pd.merge(m1, df_do_clean, on="SO_No", how="outer")
+audit_master = pd.merge(m2, df_inv_clean, on="SO_No", how="outer")
 
 audit_master["Gross_Amount"] = audit_master["Billed_Qty"] * audit_master["Billed_Price"]
 audit_master["Discount_Amount"] = audit_master["Gross_Amount"] * (audit_master["Discount_Pct"].fillna(0) / 100.0)
