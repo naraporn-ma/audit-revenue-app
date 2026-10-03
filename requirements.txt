@@ -3,5 +3,6 @@ pandas
 numpy
 plotly
 openpyxl
-tabulate
+scikit-learn
 google-genai
+tabulate
