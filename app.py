@@ -165,11 +165,13 @@ if sel_cust != "ทั้งหมด (All)":
     filtered_df = filtered_df[filtered_df["Customer_Name"] == sel_cust]
 
 if sel_range and len(sel_range) == 2:
-    # แยกตรวจสอบ: ถ้ารายการไหนมี INV_Date ให้เช็กช่วงวัน แต่ถ้ารายการไหนไม่มี INV_Date (เช่น Unbilled หรือยังไม่ออกบิล) ให้แสดงไว้ด้วยเพื่อไม่ให้ข้อมูลตกหล่น
-    inv_date_series = filtered_df["INV_Date"].dt.date
-    is_in_range = (inv_date_series >= sel_range[0]) & (inv_date_series <= sel_range[1])
+    start_ts = pd.to_datetime(sel_range[0])
+    end_ts = pd.to_datetime(sel_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+    
+    # กรอง: วันที่อยู่ในช่วง หรือเป็นรายการที่ยังไม่มีวันที่ (Unbilled/ยังไม่ออกบิล)
+    is_in_range = (filtered_df["INV_Date"] >= start_ts) & (filtered_df["INV_Date"] <= end_ts)
     is_na_date = filtered_df["INV_Date"].isna()
-    filtered_df = filtered_df[is_in_range | is_na_date]
+    filtered_df = filtered_df[is_in_range.fillna(False) | is_na_date]
 
 # ==============================================================================
 # 4. ฟังก์ชันส่งออกตารางเป็น Excel (Export Helper)
