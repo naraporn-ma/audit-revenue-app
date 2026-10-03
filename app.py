@@ -2,7 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime, date
+import io
+from sklearn.ensemble import IsolationForest
 from google import genai
 
 st.set_page_config(
@@ -11,255 +14,319 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("ระบบตรวจสอบและวิเคราะห์ความเสี่ยงวงจรรายได้และลูกหนี้การค้า")
-st.caption("Automated 3-Way Matching, Credit Control, Ghost Customers, Revenue Leakage & TFRS 9 ECL")
+st.title("ระบบตรวจสอบและวิเคราะห์ความเสี่ยงวงจรรายได้และลูกหนี้การค้า (Comprehensive AR Audit)")
+st.caption("Automated 3-Way Matching, Fraud Detection, Benford's Law, Machine Learning, Cut-off Testing & TFRS 9 ECL")
 
 # ==============================================================================
 # 1. แถบควบคุมด้านข้าง (Sidebar)
 # ==============================================================================
-st.sidebar.header("การตั้งค่าระบบและ API")
+st.sidebar.header("1. การตั้งค่าระบบและ AI")
 api_key = st.sidebar.text_input("Google Gemini API Key", type="password", help="รับได้ฟรีจาก Google AI Studio")
 
 st.sidebar.markdown("---")
-st.sidebar.header("แหล่งข้อมูล (Data Source)")
-data_mode = st.sidebar.radio("เลือกแหล่งข้อมูล:", ["ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)", "อัปโหลดไฟล์จริงจากระบบ ERP"])
+st.sidebar.header("2. แหล่งข้อมูล (Data Source)")
+data_mode = st.sidebar.radio("เลือกแหล่งข้อมูล:", ["ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)", "อัปโหลดไฟล์ Excel เดี่ยว (Single Multi-Sheet Excel)"])
 
-# ฟังก์ชันสร้างชุดข้อมูลทดสอบที่จำลองสถานการณ์จริง
 @st.cache_data
 def generate_mock_datasets():
-    # 1. ลูกค้าและวงเงิน (Customer Master)
     customers = pd.DataFrame([
         {"Customer_ID": "CUST-001", "Customer_Name": "บริษัท กิจการรุ่งเรือง จำกัด", "Tax_ID": "0105551000001", "Address": "99/1 ถ.สาทร กทม.", "Credit_Limit": 1000000.0, "Standard_Term": 30},
         {"Customer_ID": "CUST-002", "Customer_Name": "หจก. ทรัพย์ทวี เทรดดิ้ง", "Tax_ID": "0105551000002", "Address": "45/2 ถ.สีลม กทม.", "Credit_Limit": 200000.0, "Standard_Term": 30},
         {"Customer_ID": "CUST-003", "Customer_Name": "บมจ. สยาม ซัพพลาย แอนด์ โลจิสติกส์", "Tax_ID": "0105551000003", "Address": "123 ถ.สุขุมวิท กทม.", "Credit_Limit": 5000000.0, "Standard_Term": 60},
-        {"Customer_ID": "CUST-004", "Customer_Name": "บจก. สยาม โกลบอล พาร์ทเนอร์ (กลุ่มเดียวกับ CUST-003)", "Tax_ID": "0105551000003", "Address": "123 ถ.สุขุมวิท กทม.", "Credit_Limit": 100000.0, "Standard_Term": 30}, # Tax ID ซ้ำ / ที่อยู่ซ้ำ
-        {"Customer_ID": "CUST-005", "Customer_Name": "ร้าน เจริญผล พาณิชย์", "Tax_ID": "0105551000005", "Address": "88 หมู่ 3 นนทบุรี", "Credit_Limit": 300000.0, "Standard_Term": 30},
-        {"Customer_ID": "CUST-006", "Customer_Name": "บจก. นอมินี เวิลด์ (Ghost Customer)", "Tax_ID": "0105551000006", "Address": "99/1 ถ.สาทร กทม.", "Credit_Limit": 500000.0, "Standard_Term": 30}, # ที่อยู่ตรงกับ CUST-001
+        {"Customer_ID": "CUST-004", "Customer_Name": "บจก. สยาม โกลบอล พาร์ทเนอร์", "Tax_ID": "0105551000003", "Address": "123 ถ.สุขุมวิท กทม.", "Credit_Limit": 100000.0, "Standard_Term": 30},
+        {"Customer_ID": "CUST-005", "ร้าน เจริญผล พาณิชย์": "ร้าน เจริญผล พาณิชย์", "Customer_Name": "ร้าน เจริญผล พาณิชย์", "Tax_ID": "0105551000005", "Address": "88 หมู่ 3 นนทบุรี", "Credit_Limit": 300000.0, "Standard_Term": 30},
+        {"Customer_ID": "CUST-006", "Customer_Name": "บจก. นอมินี เวิลด์ (Ghost Customer)", "Tax_ID": "0105551000006", "Address": "99/1 ถ.สาทร กทม.", "Credit_Limit": 500000.0, "Standard_Term": 30},
     ])
-
-    # 2. ใบสั่งซื้อ/สั่งขาย (PO / SO)
     so = pd.DataFrame([
         {"SO_No": "SO-101", "Customer_ID": "CUST-001", "Item": "สินค้า Alpha", "SO_Qty": 100, "Approved_Price": 500.0, "Approved_Term": 30, "Max_Discount_Pct": 5.0},
         {"SO_No": "SO-102", "Customer_ID": "CUST-002", "Item": "สินค้า Beta", "SO_Qty": 50, "Approved_Price": 1200.0, "Approved_Term": 30, "Max_Discount_Pct": 0.0},
         {"SO_No": "SO-103", "Customer_ID": "CUST-003", "Item": "สินค้า Gamma", "SO_Qty": 200, "Approved_Price": 350.0, "Approved_Term": 60, "Max_Discount_Pct": 10.0},
-        {"SO_No": "SO-104", "Customer_ID": "CUST-004", "Item": "สินค้า Alpha", "SO_Qty": 150, "Approved_Price": 500.0, "Approved_Term": 90, "Max_Discount_Pct": 0.0}, # ให้เทอม 90 วันทั้งที่ Standard 30
+        {"SO_No": "SO-104", "Customer_ID": "CUST-004", "Item": "สินค้า Alpha", "SO_Qty": 150, "Approved_Price": 500.0, "Approved_Term": 90, "Max_Discount_Pct": 0.0},
         {"SO_No": "SO-105", "Customer_ID": "CUST-005", "Item": "สินค้า Delta", "SO_Qty": 20, "Approved_Price": 8000.0, "Approved_Term": 30, "Max_Discount_Pct": 5.0},
         {"SO_No": "SO-106", "Customer_ID": "CUST-006", "Item": "สินค้า Alpha", "SO_Qty": 400, "Approved_Price": 500.0, "Approved_Term": 30, "Max_Discount_Pct": 0.0},
     ])
-
-    # 3. ใบส่งของ (Delivery Order)
     do = pd.DataFrame([
         {"DO_No": "DO-101", "SO_No": "SO-101", "Delivered_Qty": 100, "Delivery_Date": "2026-06-15"},
-        {"DO_No": "DO-102", "SO_No": "SO-102", "Delivered_Qty": 35, "Delivery_Date": "2026-07-10"}, # ส่งขาด 15 ชิ้น
+        {"DO_No": "DO-102", "SO_No": "SO-102", "Delivered_Qty": 35, "Delivery_Date": "2026-07-10"},
         {"DO_No": "DO-103", "SO_No": "SO-103", "Delivered_Qty": 200, "Delivery_Date": "2026-08-01"},
         {"DO_No": "DO-104", "SO_No": "SO-104", "Delivered_Qty": 150, "Delivery_Date": "2026-08-15"},
-        # SO-106 ไม่มี DO (เสี่ยงเป็นบิลลวง)
+        {"DO_No": "DO-105", "SO_No": "SO-105", "Delivered_Qty": 20, "Delivery_Date": "2026-09-25"},
     ])
-
-    # 4. ใบแจ้งหนี้ (Invoice)
     inv = pd.DataFrame([
         {"INV_No": "INV-101", "SO_No": "SO-101", "Billed_Qty": 100, "Billed_Price": 500.0, "Discount_Pct": 5.0, "INV_Date": "2026-06-15", "Paid_Amount": 47500.0, "Status": "Normal", "Cancelled_Date": None},
-        {"INV_No": "INV-102", "SO_No": "SO-102", "Billed_Qty": 50, "Billed_Price": 1200.0, "Discount_Pct": 0.0, "INV_Date": "2026-07-10", "Paid_Amount": 0.0, "Status": "Normal", "Cancelled_Date": None}, # บิลเกินยอดส่ง
-        {"INV_No": "INV-103", "SO_No": "SO-103", "Billed_Qty": 200, "Billed_Price": 380.0, "Discount_Pct": 18.0, "INV_Date": "2026-08-01", "Paid_Amount": 20000.0, "Status": "Normal", "Cancelled_Date": None}, # ราคาเกิน + ส่วนลดเกิน
-        {"INV_No": "INV-104", "SO_No": "SO-104", "Billed_Qty": 150, "Billed_Price": 500.0, "Discount_Pct": 0.0, "INV_Date": "2026-08-15", "Paid_Amount": 0.0, "Status": "Normal", "Cancelled_Date": None},
-        {"INV_No": "INV-106", "SO_No": "SO-106", "Billed_Qty": 400, "Billed_Price": 500.0, "Discount_Pct": 0.0, "INV_Date": "2026-06-30", "Paid_Amount": 0.0, "Status": "Cancelled", "Cancelled_Date": "2026-07-03"}, # บิลลอย สิ้นงวดแล้วกดยกเลิก
+        {"INV_No": "INV-102", "SO_No": "SO-102", "Billed_Qty": 50, "Billed_Price": 1200.0, "Discount_Pct": 0.0, "INV_Date": "2026-07-10", "Paid_Amount": 0.0, "Status": "Normal", "Cancelled_Date": None},
+        {"INV_No": "INV-103", "SO_No": "SO-103", "Billed_Qty": 200, "Billed_Price": 380.0, "Discount_Pct": 18.0, "INV_Date": "2026-08-01", "Paid_Amount": 20000.0, "Status": "Normal", "Cancelled_Date": None},
+        {"INV_No": "INV-104", "SO_No": "SO-104", "Billed_Qty": 150, "Billed_Price": 500.0, "Discount_Pct": 0.0, "INV_Date": "2026-05-15", "Paid_Amount": 0.0, "Status": "Normal", "Cancelled_Date": None},
+        {"INV_No": "INV-106", "SO_No": "SO-106", "Billed_Qty": 400, "Billed_Price": 500.0, "Discount_Pct": 0.0, "INV_Date": "2026-06-30", "Paid_Amount": 0.0, "Status": "Cancelled", "Cancelled_Date": "2026-07-03"},
     ])
     return customers, so, do, inv
-
-def load_file(uploaded_file):
-    if uploaded_file.name.endswith(".csv"):
-        return pd.read_csv(uploaded_file)
-    else:
-        return pd.read_excel(uploaded_file)
 
 if data_mode == "ใช้ข้อมูลทดสอบเชิงลึก (Mock Comprehensive Data)":
     df_cust, df_so, df_do, df_inv = generate_mock_datasets()
 else:
-    f_cust = st.sidebar.file_uploader("1. อัปโหลด Customer Master", type=["csv", "xlsx"])
-    f_so = st.sidebar.file_uploader("2. อัปโหลด Sales Order (PO/SO)", type=["csv", "xlsx"])
-    f_do = st.sidebar.file_uploader("3. อัปโหลด Delivery Order (DO)", type=["csv", "xlsx"])
-    f_inv = st.sidebar.file_uploader("4. อัปโหลด Invoice / AR Ledger", type=["csv", "xlsx"])
+    uploaded_excel = st.sidebar.file_uploader("อัปโหลดไฟล์ Excel (.xlsx)", type=["xlsx", "xls"])
+    if uploaded_excel is not None:
+        excel_file = pd.ExcelFile(uploaded_excel)
+        sheets = excel_file.sheet_names
+        
+        def match_sheet(keys):
+            for s in sheets:
+                if any(k.lower() in s.lower() for k in keys):
+                    return sheets.index(s)
+            return 0
 
-    if f_cust and f_so and f_do and f_inv:
-        df_cust = load_file(f_cust)
-        df_so = load_file(f_so)
-        df_do = load_file(f_do)
-        df_inv = load_file(f_inv)
+        s_cust = st.sidebar.selectbox("Sheet ลูกค้า (Customer Master)", sheets, index=match_sheet(["cust", "ลูกค้า"]))
+        s_so = st.sidebar.selectbox("Sheet ใบสั่งขาย (Sales Order / PO)", sheets, index=match_sheet(["so", "sales", "order"]))
+        s_do = st.sidebar.selectbox("Sheet ใบส่งของ (Delivery Order)", sheets, index=match_sheet(["do", "delivery", "ส่ง"]))
+        s_inv = st.sidebar.selectbox("Sheet ใบแจ้งหนี้ (Invoice / AR)", sheets, index=match_sheet(["inv", "invoice", "ar", "ลูกหนี้"]))
+
+        try:
+            df_cust = pd.read_excel(uploaded_excel, sheet_name=s_cust)
+            df_so = pd.read_excel(uploaded_excel, sheet_name=s_so)
+            df_do = pd.read_excel(uploaded_excel, sheet_name=s_do)
+            df_inv = pd.read_excel(uploaded_excel, sheet_name=s_inv)
+        except Exception as e:
+            st.error(f"เกิดข้อผิดพลาดในการโหลดไฟล์ Excel: {str(e)}")
+            st.stop()
     else:
-        st.info("กรุณาอัปโหลดไฟล์ให้ครบทั้ง 4 ตาราง เพื่อเริ่มการวิเคราะห์เชิงลึก หรือเลือก 'ใช้ข้อมูลทดสอบเชิงลึก'")
+        st.info("กรุณาอัปโหลดไฟล์ Excel ที่มีครบทุก Sheet เพื่อเริ่มต้นการวิเคราะห์")
         st.stop()
 
 # ==============================================================================
-# 2. เครื่องมือประมวลผลและตรรกะการตรวจสอบ (Audit Engine)
+# 2. เครื่องมือประมวลผลข้อมูล (Core Audit Engine)
 # ==============================================================================
-# รวมข้อมูล SO + DO + INV เข้ากับ Customer
 m1 = pd.merge(df_so, df_cust, on="Customer_ID", how="left")
 m2 = pd.merge(m1, df_do, on="SO_No", how="outer")
 audit_master = pd.merge(m2, df_inv, on="SO_No", how="outer")
 
-# คำนวณยอดเงิน มูลค่าสุทธิ และลูกหนี้คงเหลือ
 audit_master["Gross_Amount"] = audit_master["Billed_Qty"] * audit_master["Billed_Price"]
 audit_master["Discount_Amount"] = audit_master["Gross_Amount"] * (audit_master["Discount_Pct"].fillna(0) / 100.0)
 audit_master["Net_Invoice_Amount"] = audit_master["Gross_Amount"] - audit_master["Discount_Amount"]
 audit_master["Outstanding_AR"] = audit_master["Net_Invoice_Amount"] - audit_master["Paid_Amount"].fillna(0)
 audit_master["Outstanding_AR"] = audit_master["Outstanding_AR"].apply(lambda x: max(x, 0.0) if pd.notna(x) else 0.0)
 
-# วันที่ครบกำหนด (Due Date)
 audit_master["INV_Date"] = pd.to_datetime(audit_master["INV_Date"])
 audit_master["Effective_Term"] = audit_master["Approved_Term"].fillna(audit_master["Standard_Term"]).fillna(30)
 audit_master["Due_Date"] = audit_master["INV_Date"] + pd.to_timedelta(audit_master["Effective_Term"], unit="D")
 
-# กฎการประเมิน 3-Way Matching
-def eval_3way(row):
+# การตรวจ 3-Way
+def eval_3way(r):
     errs = []
-    if pd.isna(row["DO_No"]) and pd.notna(row["INV_No"]):
-        errs.append("ไม่มีใบส่งของ (DO ขาด) แต่เปิดบิลแล้ว เสี่ยงเป็นยอดขายทิพย์")
-    if pd.notna(row["DO_No"]) and pd.isna(row["INV_No"]):
-        errs.append("ส่งของแล้วแต่ยังไม่ได้ออกบิล (Unbilled Revenue)")
-    if pd.notna(row["Delivered_Qty"]) and pd.notna(row["Billed_Qty"]):
-        if row["Billed_Qty"] > row["Delivered_Qty"]:
-            errs.append(f"เปิดบิลเกินยอดส่งจริง ({row['Billed_Qty']} > {row['Delivered_Qty']})")
-    if pd.notna(row["Approved_Price"]) and pd.notna(row["Billed_Price"]):
-        if row["Billed_Price"] > row["Approved_Price"]:
-            errs.append(f"ราคาขายในบิลสูงกว่าที่อนุมัติใน SO ({row['Billed_Price']} > {row['Approved_Price']})")
+    if pd.isna(r["DO_No"]) and pd.notna(r["INV_No"]): errs.append("ไม่มีใบส่งของ (DO ขาด) เสี่ยงเป็นยอดขายทิพย์")
+    if pd.notna(r["DO_No"]) and pd.isna(r["INV_No"]): errs.append("ส่งของแล้วแต่ยังไม่ออกบิล (Unbilled Revenue)")
+    if pd.notna(r["Delivered_Qty"]) and pd.notna(r["Billed_Qty"]):
+        if r["Billed_Qty"] > r["Delivered_Qty"]: errs.append(f"เปิดบิลเกินส่งจริง ({r['Billed_Qty']} > {r['Delivered_Qty']})")
+    if pd.notna(r["Approved_Price"]) and pd.notna(r["Billed_Price"]):
+        if r["Billed_Price"] > r["Approved_Price"]: errs.append(f"ราคาขายในบิลสูงกว่าที่อนุมัติ ({r['Billed_Price']} > {r['Approved_Price']})")
+    return "; ".join(errs) if errs else "ปกติ"
+
+# การตรวจ Credit & Term
+def eval_credit(r):
+    errs = []
+    if pd.notna(r["Approved_Term"]) and pd.notna(r["Standard_Term"]):
+        if r["Approved_Term"] > r["Standard_Term"]: errs.append(f"ให้เทอมเกินมาตรฐาน ({r['Approved_Term']} วัน > {r['Standard_Term']} วัน)")
+    if pd.notna(r["Outstanding_AR"]) and pd.notna(r["Credit_Limit"]):
+        if r["Outstanding_AR"] > r["Credit_Limit"]: errs.append(f"หนี้ค้างเกินวงเงิน ({r['Outstanding_AR']:,.0f} > {r['Credit_Limit']:,.0f})")
+    return "; ".join(errs) if errs else "ปกติ"
+
+# การตรวจ Leakage
+def eval_leakage(r):
+    errs = []
+    if pd.notna(r["Discount_Pct"]) and pd.notna(r["Max_Discount_Pct"]):
+        if r["Discount_Pct"] > r["Max_Discount_Pct"]: errs.append(f"ส่วนลดเกินเพดาน ({r['Discount_Pct']}% > {r['Max_Discount_Pct']}%)")
+    if r.get("Status") == "Cancelled" and pd.notna(r.get("Cancelled_Date")):
+        inv_m = r["INV_Date"].month if pd.notna(r["INV_Date"]) else None
+        can_d = pd.to_datetime(r["Cancelled_Date"])
+        if inv_m and can_d.month != inv_m: errs.append(f"ยกเลิกบิลข้ามงวด (ออกเดือน {inv_m} ยกเลิก {can_d.strftime('%Y-%m-%d')})")
     return "; ".join(errs) if errs else "ปกติ"
 
 audit_master["3Way_Finding"] = audit_master.apply(eval_3way, axis=1)
-
-# กฎการประเมิน Credit & Terms
-def eval_credit(row):
-    errs = []
-    if pd.notna(row["Approved_Term"]) and pd.notna(row["Standard_Term"]):
-        if row["Approved_Term"] > row["Standard_Term"]:
-            errs.append(f"ให้เทอมเกินมาตรฐาน ({row['Approved_Term']} วัน > มาตรฐาน {row['Standard_Term']} วัน)")
-    if pd.notna(row["Outstanding_AR"]) and pd.notna(row["Credit_Limit"]):
-        if row["Outstanding_AR"] > row["Credit_Limit"]:
-            errs.append(f"ยอดหนี้คงค้างเกินวงเงินสินเชื่อ ({row['Outstanding_AR']:,.0f} > วงเงิน {row['Credit_Limit']:,.0f})")
-    return "; ".join(errs) if errs else "ปกติ"
-
 audit_master["Credit_Finding"] = audit_master.apply(eval_credit, axis=1)
-
-# กฎการตรวจจับ Revenue Leakage
-def eval_leakage(row):
-    errs = []
-    # 1. ส่วนลดเกินอนุมัติ
-    if pd.notna(row["Discount_Pct"]) and pd.notna(row["Max_Discount_Pct"]):
-        if row["Discount_Pct"] > row["Max_Discount_Pct"]:
-            errs.append(f"ให้ส่วนลดเกินเพดานอนุมัติ ({row['Discount_Pct']}% > อนุมัติ {row['Max_Discount_Pct']}%)")
-    # 2. ยกเลิกบิลหลังปิดงวด
-    if row.get("Status") == "Cancelled" and pd.notna(row.get("Cancelled_Date")):
-        inv_month = row["INV_Date"].month if pd.notna(row["INV_Date"]) else None
-        can_date = pd.to_datetime(row["Cancelled_Date"])
-        if inv_month and can_date.month != inv_month:
-            errs.append(f"ยกเลิกใบแจ้งหนี้ข้ามงวดบัญชี (ออกบิลเดือน {inv_month} ยกเลิกวันที่ {can_date.strftime('%Y-%m-%d')}) เสี่ยงตกแต่งรายได้")
-    return "; ".join(errs) if errs else "ปกติ"
-
 audit_master["Leakage_Finding"] = audit_master.apply(eval_leakage, axis=1)
 
 # ==============================================================================
-# 3. สรุปภาพรวมแดชบอร์ดผู้บริหาร (Executive KPIs)
+# 3. ตัวกรองข้อมูลแบบ Interactive (Sidebar Filter)
 # ==============================================================================
-total_tx = len(audit_master)
-c_3way = (audit_master["3Way_Finding"] != "ปกติ").sum()
-c_credit = (audit_master["Credit_Finding"] != "ปกติ").sum()
-c_leakage = (audit_master["Leakage_Finding"] != "ปกติ").sum()
+st.sidebar.markdown("---")
+st.sidebar.header("3. กรองข้อมูล (Interactive Filters)")
+all_custs = ["ทั้งหมด (All)"] + list(audit_master["Customer_Name"].dropna().unique())
+sel_cust = st.sidebar.selectbox("เลือกเฉพาะลูกค้า:", all_custs)
 
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-kpi1.metric("รายการตรวจทั้งหมด", f"{total_tx} รายการ")
-kpi2.metric("3-Way Mismatch", f"{c_3way} ประเด็น", delta_color="inverse")
-kpi3.metric("Credit & Term Breach", f"{c_credit} ประเด็น", delta_color="inverse")
-kpi4.metric("Revenue Leakage", f"{c_leakage} ประเด็น", delta_color="inverse")
+valid_dates = audit_master["INV_Date"].dropna()
+if not valid_dates.empty:
+    min_d, max_d = valid_dates.min().date(), valid_dates.max().date()
+    sel_range = st.sidebar.date_input("ช่วงวันที่ออกใบแจ้งหนี้:", [min_d, max_d])
+else:
+    sel_range = None
+
+# กรอง Master Data ตามเงื่อนไข
+filtered_df = audit_master.copy()
+if sel_cust != "ทั้งหมด (All)":
+    filtered_df = filtered_df[filtered_df["Customer_Name"] == sel_cust]
+if sel_range and len(sel_range) == 2:
+    filtered_df = filtered_df[(filtered_df["INV_Date"].dt.date >= sel_range[0]) & (filtered_df["INV_Date"].dt.date <= sel_range[1])]
+
+# ==============================================================================
+# 4. ฟังก์ชันส่งออกตารางเป็น Excel (Export Helper)
+# ==============================================================================
+def to_excel_download(df_to_export):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_to_export.to_excel(writer, index=False, sheet_name='Audit_Exceptions')
+    return output.getvalue()
+
+# ==============================================================================
+# 5. สรุปภาพรวมแดชบอร์ด (Top Metrics)
+# ==============================================================================
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("รายการตรวจทั้งหมด", f"{len(filtered_df)} รายการ")
+k2.metric("3-Way Mismatch", f"{(filtered_df['3Way_Finding'] != 'ปกติ').sum()} ประเด็น", delta_color="inverse")
+k3.metric("Credit Breach", f"{(filtered_df['Credit_Finding'] != 'ปกติ').sum()} ประเด็น", delta_color="inverse")
+k4.metric("Revenue Leakage", f"{(filtered_df['Leakage_Finding'] != 'ปกติ').sum()} ประเด็น", delta_color="inverse")
 
 st.markdown("---")
 
 # ==============================================================================
-# 4. แท็บการตรวจสอบเฉพาะด้านทั้ง 6 มิติ
+# 6. แท็บการตรวจสอบ 9 มิติ
 # ==============================================================================
-t1, t2, t3, t4, t5, t6 = st.tabs([
+tabs = st.tabs([
     "1. 3-Way Matching",
-    "2. Credit & Term Violations",
-    "3. Ghost Customers & Circular",
+    "2. Credit Controls",
+    "3. Ghost Customers",
     "4. Revenue Leakage",
-    "5. Aging & ECL (TFRS 9)",
-    "6. AI Audit Report (Gemini)"
+    "5. Cut-off Testing",
+    "6. Benford's Law",
+    "7. ML Anomaly Detection",
+    "8. Aging & ECL (TFRS 9)",
+    "9. AR Confirmation",
+    "10. AI Audit Assistant"
 ])
 
-# ----------------- TAB 1: 3-Way Matching -----------------
-with t1:
+# ----- TAB 1: 3-Way Matching -----
+with tabs[0]:
     st.subheader("Automated 3-Way Matching (Sales Order - Delivery - Invoice)")
-    ex_3way = audit_master[audit_master["3Way_Finding"] != "ปกติ"]
-    cols_show = ["SO_No", "Customer_Name", "DO_No", "INV_No", "SO_Qty", "Delivered_Qty", "Billed_Qty", "Approved_Price", "Billed_Price", "3Way_Finding"]
-    if not ex_3way.empty:
-        st.dataframe(ex_3way[cols_show].fillna("-"), use_container_width=True)
+    ex_3w = filtered_df[filtered_df["3Way_Finding"] != "ปกติ"]
+    cols_3w = ["SO_No", "Customer_Name", "DO_No", "INV_No", "SO_Qty", "Delivered_Qty", "Billed_Qty", "Approved_Price", "Billed_Price", "3Way_Finding"]
+    if not ex_3w.empty:
+        st.dataframe(ex_3w[cols_3w].fillna("-"), use_container_width=True)
+        st.download_button("ดาวน์โหลดผลตรวจ 3-Way (.xlsx)", to_excel_download(ex_3w[cols_3w]), "3way_exceptions.xlsx")
     else:
-        st.success("ไม่พบส่วนต่างในกระบวนการ 3-Way Matching")
+        st.success("ไม่พบข้อผิดปกติในกระบวนการ 3-Way Matching")
 
-# ----------------- TAB 2: Credit Violations -----------------
-with t2:
+# ----- TAB 2: Credit Controls -----
+with tabs[1]:
     st.subheader("การอนุมัติวงเงินสินเชื่อและเงื่อนไขระยะเวลาชำระ (Credit Controls)")
-    ex_credit = audit_master[audit_master["Credit_Finding"] != "ปกติ"]
-    cols_credit = ["SO_No", "Customer_Name", "Credit_Limit", "Outstanding_AR", "Standard_Term", "Approved_Term", "Credit_Finding"]
-    if not ex_credit.empty:
-        st.dataframe(ex_credit[cols_credit].fillna("-"), use_container_width=True)
+    ex_cr = filtered_df[filtered_df["Credit_Finding"] != "ปกติ"]
+    cols_cr = ["SO_No", "Customer_Name", "Credit_Limit", "Outstanding_AR", "Standard_Term", "Approved_Term", "Credit_Finding"]
+    if not ex_cr.empty:
+        st.dataframe(ex_cr[cols_cr].fillna("-"), use_container_width=True)
+        st.download_button("ดาวน์โหลดผลตรวจ Credit (.xlsx)", to_excel_download(ex_cr[cols_cr]), "credit_exceptions.xlsx")
     else:
-        st.success("การให้วงเงินและเครดิตเทอมเป็นไปตามระเบียบขององค์กร")
+        st.success("วงเงินและเครดิตเทอมเป็นไปตามเกณฑ์มาตรฐาน")
 
-# ----------------- TAB 3: Ghost Customers & Circular -----------------
-with t3:
+# ----- TAB 3: Ghost Customers -----
+with tabs[2]:
     st.subheader("ตรวจสอบลูกหนี้ที่ไม่มีตัวตนจริงและนิติกรรมอำพราง (Ghost Customers)")
-    st.caption("ตรวจสอบความเชื่อมโยงของเลขประจำตัวผู้เสียภาษี (Tax ID) และที่อยู่สถานประกอบการที่ซ้ำซ้อน")
+    d_tax = df_cust[df_cust.duplicated(subset=["Tax_ID"], keep=False)]
+    d_add = df_cust[df_cust.duplicated(subset=["Address"], keep=False)]
     
-    # เช็ก Tax ID ซ้ำ
-    dup_tax = df_cust[df_cust.duplicated(subset=["Tax_ID"], keep=False)]
-    # เช็ก Address ซ้ำ
-    dup_addr = df_cust[df_cust.duplicated(subset=["Address"], keep=False)]
-    
-    c_tax, c_addr = st.columns(2)
-    with c_tax:
-        st.markdown("**1. ลูกค้าที่ใช้เลขประจำตัวผู้เสียภาษี (Tax ID) ซ้ำกัน:**")
-        if not dup_tax.empty:
-            st.dataframe(dup_tax[["Customer_ID", "Customer_Name", "Tax_ID"]], use_container_width=True)
-        else:
-            st.success("ไม่พบ Tax ID ซ้ำ")
-            
-    with c_addr:
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**1. ลูกค้าที่ใช้เลขประจำตัวผู้เสียภาษี (Tax ID) ซ้ำซ้อน:**")
+        if not d_tax.empty:
+            st.dataframe(d_tax[["Customer_ID", "Customer_Name", "Tax_ID"]], use_container_width=True)
+        else: st.success("ไม่พบ Tax ID ซ้ำ")
+    with c2:
         st.markdown("**2. ลูกค้าที่ใช้ที่อยู่จดทะเบียนเดียวกัน (Shared Address):**")
-        if not dup_addr.empty:
-            st.dataframe(dup_addr[["Customer_ID", "Customer_Name", "Address"]], use_container_width=True)
-        else:
-            st.success("ไม่พบที่อยู่ซ้ำซ้อน")
+        if not d_add.empty:
+            st.dataframe(d_add[["Customer_ID", "Customer_Name", "Address"]], use_container_width=True)
+        else: st.success("ไม่พบที่อยู่ซ้ำซ้อน")
 
-# ----------------- TAB 4: Revenue Leakage -----------------
-with t4:
-    st.subheader("การรั่วไหลของรายได้และการตกแต่งบัญชี (Revenue Leakage & Cut-off)")
-    ex_leakage = audit_master[audit_master["Leakage_Finding"] != "ปกติ"]
-    cols_leak = ["INV_No", "Customer_Name", "Gross_Amount", "Discount_Pct", "Max_Discount_Pct", "Status", "Cancelled_Date", "Leakage_Finding"]
-    if not ex_leakage.empty:
-        st.dataframe(ex_leakage[cols_leak].fillna("-"), use_container_width=True)
+# ----- TAB 4: Revenue Leakage -----
+with tabs[3]:
+    st.subheader("การรั่วไหลของรายได้และการยกเลิกบิลผิดปกติ (Revenue Leakage)")
+    ex_lk = filtered_df[filtered_df["Leakage_Finding"] != "ปกติ"]
+    cols_lk = ["INV_No", "Customer_Name", "Gross_Amount", "Discount_Pct", "Max_Discount_Pct", "Status", "Cancelled_Date", "Leakage_Finding"]
+    if not ex_lk.empty:
+        st.dataframe(ex_lk[cols_lk].fillna("-"), use_container_width=True)
+        st.download_button("ดาวน์โหลดผลตรวจ Revenue Leakage (.xlsx)", to_excel_download(ex_lk[cols_lk]), "leakage_exceptions.xlsx")
     else:
-        st.success("ไม่พบข้อสังเกตเรื่องส่วนลดทับซ้อนหรือการยกเลิกบิลผิดปกติ")
+        st.success("ไม่พบรายการส่วนลดหรือยกเลิกบิลผิดปกติ")
 
-# ----------------- TAB 5: Aging & TFRS 9 ECL -----------------
-with t5:
-    st.subheader("วิเคราะห์อายุหนี้และการประเมินผลขาดทุนด้านเครดิต (TFRS 9 ECL)")
-    as_of = pd.to_datetime(date.today())
-    audit_master["Overdue_Days"] = (as_of - audit_master["Due_Date"]).dt.days.fillna(0)
+# ----- TAB 5: Cut-off Testing -----
+with tabs[4]:
+    st.subheader("การตรวจสอบการรับรู้รายได้ข้ามงวดบัญชี (Cut-off Testing)")
+    cut_date = st.date_input("กำหนดวันสิ้นงวดบัญชี (Year-End Cut-off Date):", date(2026, 6, 30))
+    window = st.slider("ช่วงวันตรวจสอบก่อนและหลังวันสิ้นงวด (วัน):", 3, 30, 7)
     
-    def bucket_aging(d):
-        if d <= 0: return "1. ยังไม่ถึงกำหนด (Current)"
+    s_d = pd.to_datetime(cut_date) - pd.Timedelta(days=window)
+    e_d = pd.to_datetime(cut_date) + pd.Timedelta(days=window)
+    
+    cut_df = filtered_df[(filtered_df["INV_Date"] >= s_d) & (filtered_df["INV_Date"] <= e_d)]
+    st.write(f"พบรายการขายในช่วง {s_d.strftime('%Y-%m-%d')} ถึง {e_d.strftime('%Y-%m-%d')} จำนวน {len(cut_df)} รายการ:")
+    st.dataframe(cut_df[["INV_No", "Customer_Name", "INV_Date", "Delivery_Date", "Net_Invoice_Amount", "Status"]].fillna("-"), use_container_width=True)
+
+# ----- TAB 6: Benford's Law -----
+with tabs[5]:
+    st.subheader("การวิเคราะห์ความผิดปกติของตัวเลขด้วยกฎเบนฟอร์ด (Benford's Law)")
+    st.caption("เปรียบเทียบการกระจายตัวของเลขหลักแรก (First Digit) ของยอดเงินใน Invoice กับอัตราส่วนมาตรฐานสากล")
+    
+    valid_inv = filtered_df[filtered_df["Net_Invoice_Amount"] > 0]["Net_Invoice_Amount"].astype(str)
+    first_digits = valid_inv.str.extract(r'([1-9])')[0].dropna().astype(int)
+    
+    if len(first_digits) > 0:
+        actual_counts = first_digits.value_counts(normalize=True).sort_index()
+        benford_expected = {d: np.log10(1 + 1/d) for d in range(1, 10)}
+        
+        b_df = pd.DataFrame({
+            "Digit": list(range(1, 10)),
+            "Actual_Pct": [actual_counts.get(d, 0) * 100 for d in range(1, 10)],
+            "Benford_Pct": [benford_expected[d] * 100 for d in range(1, 10)]
+        })
+        
+        fig_b = go.Figure()
+        fig_b.add_trace(go.Bar(x=b_df["Digit"], y=b_df["Actual_Pct"], name="สัดส่วนที่ตรวจพบจริง (%)", marker_color="royalblue"))
+        fig_b.add_trace(go.Scatter(x=b_df["Digit"], y=b_df["Benford_Pct"], mode="lines+markers", name="เกณฑ์มาตรฐาน Benford (%)", line=dict(color="crimson", width=3)))
+        fig_b.update_layout(xaxis_title="เลขหลักแรก (1-9)", yaxis_title="สัดส่วนเปอร์เซ็นต์ (%)", barmode="group")
+        st.plotly_chart(fig_b, use_container_width=True)
+    else:
+        st.info("มีข้อมูลตัวเลขยอดเงินไม่เพียงพอสำหรับการทดสอบ Benford's Law")
+
+# ----- TAB 7: Machine Learning Anomaly Detection -----
+with tabs[6]:
+    st.subheader("การตรวจจับความผิดปกติด้วย Machine Learning (Isolation Forest)")
+    st.caption("วิเคราะห์ความผิดปกติแบบพหุมิติ (ยอดเงิน, ปริมาณ, ส่วนลด, เครดิตเทอม) เพื่อหา Outliers")
+    
+    ml_feats = filtered_df[["Gross_Amount", "Billed_Qty", "Discount_Pct", "Effective_Term"]].fillna(0)
+    if len(ml_feats) >= 3:
+        iso = IsolationForest(contamination=0.2, random_state=42)
+        filtered_df["Anomaly_Score"] = iso.fit_predict(ml_feats)
+        anomalies = filtered_df[filtered_df["Anomaly_Score"] == -1]
+        
+        st.write(f"พบรายการที่มีพฤติกรรมผิดปกติโดย Machine Learning: **{len(anomalies)} รายการ**")
+        st.dataframe(anomalies[["INV_No", "Customer_Name", "Gross_Amount", "Billed_Qty", "Discount_Pct", "Effective_Term"]].fillna("-"), use_container_width=True)
+    else:
+        st.info("จำนวนข้อมูลน้อยเกินไปสำหรับการรันโมเดล Isolation Forest")
+
+# ----- TAB 8: Aging & TFRS 9 ECL -----
+with tabs[7]:
+    st.subheader("วิเคราะห์อายุหนี้และคำนวณค่าเผื่อผลขาดทุนด้านเครดิต (TFRS 9 Provision Matrix)")
+    as_of = pd.to_datetime(date.today())
+    filtered_df["Overdue_Days"] = (as_of - filtered_df["Due_Date"]).dt.days.fillna(0)
+    
+    def bucket_ag(d):
+        if d <= 0: return "1. ยังไม่ถึงกำหนด"
         elif d <= 30: return "2. เกินกำหนด 1-30 วัน"
         elif d <= 60: return "3. เกินกำหนด 31-60 วัน"
         elif d <= 90: return "4. เกินกำหนด 61-90 วัน"
         else: return "5. เกินกำหนด > 90 วัน (NPL)"
         
-    audit_master["Aging_Group"] = audit_master["Overdue_Days"].apply(bucket_aging)
-    ar_open = audit_master[audit_master["Outstanding_AR"] > 0]
-    
+    filtered_df["Aging_Group"] = filtered_df["Overdue_Days"].apply(bucket_ag)
+    ar_open = filtered_df[filtered_df["Outstanding_AR"] > 0]
     aging_sum = ar_open.groupby("Aging_Group")["Outstanding_AR"].sum().reset_index()
     
-    # อัตรา Loss Rate ตาม TFRS 9 Provision Matrix
     loss_rates = {
-        "1. ยังไม่ถึงกำหนด (Current)": 0.005,
+        "1. ยังไม่ถึงกำหนด": 0.005,
         "2. เกินกำหนด 1-30 วัน": 0.02,
         "3. เกินกำหนด 31-60 วัน": 0.05,
         "4. เกินกำหนด 61-90 วัน": 0.15,
@@ -269,75 +336,97 @@ with t5:
     aging_sum["Loss_Rate_%"] = aging_sum["Aging_Group"].map(lambda x: loss_rates.get(x, 0) * 100)
     aging_sum["ECL_Allowance"] = aging_sum["Aging_Group"].map(lambda x: loss_rates.get(x, 0)) * aging_sum["Outstanding_AR"]
     
-    col_g, col_t = st.columns([1, 1])
-    with col_g:
-        fig_ar = px.bar(aging_sum, x="Aging_Group", y="Outstanding_AR", title="ยอดลูกหนี้คงค้างแยกตามชั้นอายุ", color="Aging_Group")
+    cg, ct = st.columns([1, 1])
+    with cg:
+        fig_ar = px.bar(aging_sum, x="Aging_Group", y="Outstanding_AR", title="ยอดลูกหนี้ตามชั้นอายุ", color="Aging_Group")
         st.plotly_chart(fig_ar, use_container_width=True)
-    with col_t:
-        st.markdown("**ตารางคำนวณ ECL Provision Matrix สิ้นงวด:**")
-        st.dataframe(
-            aging_sum.style.format({"Outstanding_AR": "{:,.2f}", "Loss_Rate_%": "{:.2f}%", "ECL_Allowance": "{:,.2f}"}),
-            use_container_width=True
-        )
-        total_ecl = aging_sum["ECL_Allowance"].sum()
-        st.metric("ประมาณการค่าเผื่อผลขาดทุนด้านเครดิต (ECL) รวม", f"{total_ecl:,.2f} บาท")
+    with ct:
+        st.dataframe(aging_sum.style.format({"Outstanding_AR": "{:,.2f}", "Loss_Rate_%": "{:.2f}%", "ECL_Allowance": "{:,.2f}"}), use_container_width=True)
+        st.metric("ประมาณการค่าเผื่อ ECL รวมสุทธิ", f"{aging_sum['ECL_Allowance'].sum():,.2f} บาท")
 
-# ----------------- TAB 6: AI Audit Report -----------------
-with t6:
-    st.subheader("ร่างรายงานการตรวจสอบภายในอัตโนมัติด้วย Generative AI (Gemini)")
+# ----- TAB 9: AR Confirmation -----
+with tabs[8]:
+    st.subheader("ระบบสร้างและติดตามหนังสือยืนยันยอดลูกหนี้ (AR Confirmation)")
+    st.caption("สุ่มตัวอย่างลูกหนี้ที่มียอดค้างชำระเพื่อจัดทำหนังสือยืนยันยอด (Circularization)")
     
-    # รวบรวมข้อผิดปกติทั้งหมด
-    all_findings = []
-    for idx, r in audit_master.iterrows():
+    top_ar = filtered_df[filtered_df["Outstanding_AR"] > 0].sort_values(by="Outstanding_AR", ascending=False)
+    if not top_ar.empty:
+        target_cust = st.selectbox("เลือกลูกหนี้เพื่อออกหนังสือยืนยันยอด:", top_ar["Customer_Name"].unique())
+        cust_row = top_ar[top_ar["Customer_Name"] == target_cust].iloc[0]
+        
+        conf_letter = f"""
+**หนังสือขอคำยืนยันยอดลูกหนี้การค้า (Accounts Receivable Confirmation Request)**
+วันที่: {date.today().strftime('%d/%m/%Y')}
+เรียน: ฝ่ายบัญชีและการเงิน {cust_row['Customer_Name']}
+ที่อยู่: {cust_row.get('Address', '-')}
+
+ในการตรวจสอบบัญชีประจำปีของเรา ขอความกรุณาท่านโปรดยืนยันความถูกต้องของยอดหนี้คงค้าง ณ วันที่ {date.today().strftime('%d/%m/%Y')} 
+ซึ่งตามสมุดบัญชีของเรา ปรากฏยอดหนี้ที่ท่านค้างชำระเป็นจำนวนเงินทั้งสิ้น **{cust_row['Outstanding_AR']:,.2f} บาท**
+
+หากยอดดังกล่าว **ถูกต้อง** หรือ **มีข้อทักท้วงประการใด** โปรดลงลายมือชื่อและส่งกลับมายังผู้สอบบัญชีโดยตรง
+"""
+        st.markdown(conf_letter)
+        st.selectbox("บันทึกสถานะการติดตามผล (Confirmation Status Tracker):", 
+                     ["1. รอจัดส่งเอกสาร", "2. ส่งเอกสารแล้ว รอการตอบกลับ", "3. ตอบกลับแล้ว ยอดถูกต้องตรงกัน", "4. ตอบกลับแล้ว พบผลต่าง (Disputed)", "5. ไม่ตอบกลับ (Second Request)"])
+    else:
+        st.info("ไม่พบลูกหนี้ที่มียอดคงค้างสำหรับทำหนังสือยืนยันยอด")
+
+# ----- TAB 10: AI Audit Assistant -----
+with tabs[9]:
+    st.subheader("AI Internal Audit Assistant (Gemini 2.5)")
+    
+    issues_list = []
+    for idx, r in filtered_df.iterrows():
         f = []
         if r["3Way_Finding"] != "ปกติ": f.append(f"[3-Way] {r['3Way_Finding']}")
         if r["Credit_Finding"] != "ปกติ": f.append(f"[Credit] {r['Credit_Finding']}")
         if r["Leakage_Finding"] != "ปกติ": f.append(f"[Leakage] {r['Leakage_Finding']}")
         if f:
-            all_findings.append({
-                "SO_No": r.get("SO_No", "-"),
-                "Customer": r.get("Customer_Name", "-"),
-                "Issues": " | ".join(f)
-            })
+            issues_list.append({"SO_No": r.get("SO_No", "-"), "Customer": r.get("Customer_Name", "-"), "Issues": " | ".join(f)})
+            
+    df_iss = pd.DataFrame(issues_list)
     
-    df_issues = pd.DataFrame(all_findings)
-    st.write(f"พบรายการที่มีประเด็นความเสี่ยงรวมทั้งสิ้น: **{len(df_issues)} รายการ**")
-    
-    if st.button("กดให้ AI สรุปรายงานข้อตรวจพบและข้อเสนอแนะ", type="primary"):
+    if st.button("สั่งให้ AI ร่างรายงานการตรวจสอบภายในฉบับเต็ม", type="primary"):
         if not api_key:
-            st.error("กรุณาระบุ Gemini API Key ที่แถบด้านซ้ายมือ")
-        elif df_issues.empty:
-            st.success("ไม่พบข้อผิดปกติในระบบ ข้อมูลมีความถูกต้องครบถ้วนสมบูรณ์")
+            st.error("กรุณาระบุ Gemini API Key ที่แถบด้านซ้ายก่อนใช้งาน")
+        elif df_iss.empty:
+            st.success("ไม่พบประเด็นข้อผิดพลาด ข้อมูลเป็นไปตามการควบคุมภายใน")
         else:
-            with st.spinner("Gemini กำลังสังเคราะห์ข้อมูลและร่างรายงานตรวจสอบตามมาตรฐานสากล..."):
+            with st.spinner("AI กำลังวิเคราะห์ผลกระทบทางบัญชีและร่างรายงานตามมาตรฐาน 5Cs..."):
                 try:
                     client = genai.Client(api_key=api_key)
-                    md_table = df_issues.to_markdown(index=False)
                     prompt = f"""
-คุณเป็นหัวหน้าฝ่ายตรวจสอบภายใน (Chief Audit Executive) และผู้เชี่ยวชาญด้านบัญชี (TFRS 15, TFRS 9)
-ได้รับข้อมูลข้อตรวจพบจากการทดสอบการควบคุมและการกระทบยอดข้อมูลในวงจรรายได้และลูกหนี้ ดังนี้:
+คุณเป็นหัวหน้าฝ่ายตรวจสอบภายใน (Chief Audit Executive) ให้วิเคราะห์ข้อบกพร่องเหล่านี้:
+{df_iss.to_markdown(index=False)}
 
-{md_table}
-
-กรุณาร่าง 'รายงานข้อตรวจพบและข้อเสนอแนะของการตรวจสอบภายใน' (Internal Audit Findings and Recommendations Report) โดยครอบคลุม:
-1. **บทสรุปสำหรับผู้บริหาร (Executive Summary):** สรุปสภาพแวดล้อมการควบคุมภายใน และระดับความเสี่ยงของกระบวนการขาย
-2. **การวิเคราะห์ข้อตรวจพบรายประเด็น (Detailed Findings):** แบ่งตามหมวดหมู่ (3-Way Matching, การให้สินเชื่อเกินอำนาจ, ความเสี่ยงลูกหนี้ทิพย์, และการรั่วไหลของรายได้)
-   โดยในแต่ละหมวดให้วิเคราะห์ตามโครงสร้าง 5Cs:
-   - สภาพการณ์ที่ตรวจพบ (Condition)
-   - เกณฑ์มาตรฐาน/การควบคุมที่ควรมี (Criteria)
-   - ผลกระทบและความเสี่ยงต่อองค์กร (Consequence/Risk)
-   - สาเหตุที่เป็นไปได้ (Cause)
-3. **ข้อเสนอแนะต่อฝ่ายบริหาร (Management Recommendations):** แนวทางการปรับปรุงการควบคุมภายในเชิงป้องกัน (Preventive Controls) ทั้งในระดับระบบ ERP และระดับนโยบาย
+กรุณาร่างรายงานการตรวจสอบภายใน (5Cs Framework):
+1. Executive Summary
+2. Detailed Findings (Criteria, Condition, Cause, Consequence, Corrective Action)
+3. Recommendations สำหรับฝ่ายบริหาร
 """
                     res = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-                    st.markdown("### ร่างรายงานการตรวจสอบภายในฉบับสมบูรณ์")
-                    st.markdown(res.text)
-                    
-                    st.download_button(
-                        label="ดาวน์โหลดรายงาน (.md)",
-                        data=res.text,
-                        file_name="Internal_Audit_Revenue_Report.md",
-                        mime="text/markdown"
-                    )
+                    st.session_state["audit_report_text"] = res.text
                 except Exception as e:
-                    st.error(f"เกิดข้อผิดพลาดในการเรียกใช้ API: {str(e)}")
+                    st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ API: {str(e)}")
+
+    if "audit_report_text" in st.session_state:
+        st.markdown(st.session_state["audit_report_text"])
+        st.download_button("ดาวน์โหลดรายงาน (.md)", st.session_state["audit_report_text"], "audit_report.md")
+
+    st.markdown("---")
+    st.markdown("##### ซักถามข้อสงสัยเพิ่มเติมกับ AI (Interactive Audit Chat)")
+    user_q = st.text_input("พิมพ์คำถามที่ต้องการปรึกษา AI เพิ่มเติม:")
+    if st.button("ส่งคำถาม"):
+        if not api_key:
+            st.error("กรุณาระบุ Gemini API Key ก่อน")
+        elif user_q:
+            with st.spinner("กำลังคิดคำตอบ..."):
+                try:
+                    client = genai.Client(api_key=api_key)
+                    chat_res = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=f"ในฐานะผู้เชี่ยวชาญด้านการตรวจสอบบัญชีและควบคุมภายใน จงตอบคำถามนี้โดยอิงจากข้อตรวจพบในวงจรรายได้: {user_q}"
+                    )
+                    st.info(chat_res.text)
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
