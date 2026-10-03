@@ -160,7 +160,6 @@ else:
     sel_range = None
 
 # กรอง Master Data ตามเงื่อนไข
-# --- โค้ดใหม่ที่แก้ไขแล้ว ---
 filtered_df = audit_master.copy()
 if sel_cust != "ทั้งหมด (All)":
     filtered_df = filtered_df[filtered_df["Customer_Name"] == sel_cust]
